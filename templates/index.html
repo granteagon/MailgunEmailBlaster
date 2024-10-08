@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mailgun Email Blaster</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 400px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background-color: #fff; }
+        button { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; }
+        .edit-button, .add-button { margin-left: 5px; }
+        button.add-button { background-color: #333; color: #fff; }
+        button.edit-button { background-color: #5bc0de; color: white; }
+        button.delete-button { background-color: #d9534f; color: white; margin-left: 10px; }
+        button.send-live { background-color: #d9534f; color: white; }
+        button.send-test { background-color: #333; color: white; margin-left: 10px; }
+        select, input[type="text"] { width: 100%; padding: 8px; margin-top: 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .button-row { display: flex; justify-content: space-between; margin-top: 20px; }
+        .helper-text { font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <h1>Mailgun Email Blaster</h1>
+
+    <!-- Domain Selection -->
+    <div id="domain-picker">
+        <label for="domain">Domain</label>
+        <div class="domain-controls">
+            <select id="domain-select">
+                <option value="">Select a domain</option>
+                {% for domain in domains %}
+                <option value="{{ domain }}">{{ domain }}</option>
+                {% endfor %}
+            </select>
+            <button class="edit-button" id="edit-domain">Edit</button>
+            <button class="add-button" id="add-domain">Add Domain</button>
+        </div>
+    </div>
+
+    <!-- Add/Edit Domain Form -->
+    <div id="domain-form" style="display: none;">
+        <label for="domain">Domain</label>
+        <input type="text" id="new-domain">
+        <label for="api_key">API Key</label>
+        <input type="text" id="new-api-key">
+        <button class="edit-button" id="save-domain">Save</button>
+        <button class="delete-button" id="cancel-edit">Cancel</button>
+    </div>
+
+    <!-- Template -->
+    <label for="template">Template</label>
+    <select id="template-select" disabled>
+        <option value="">Select a template</option>
+    </select>
+
+    <!-- Subject Input -->
+    <label for="email-subject">Email Subject</label>
+    <input type="text" id="email-subject" placeholder="Enter the email subject">
+
+    <!-- From Address Input -->
+    <label for="from-address">From Address</label>
+    <input type="text" id="from-address" placeholder="Enter the from address">
+
+    <!-- Mail List and Test Emails -->
+    <label for="mail-list">Mail List</label>
+    <select id="mail-list-select" disabled>
+        <option value="">Select a mail list</option>
+    </select>
+
+    <!-- Test Emails Input -->
+    <label for="test-emails">Test Emails (comma separated)</label>
+    <input type="text" id="test-emails" placeholder="Enter test emails">
+
+    <!-- Deliverable Only Checkbox -->
+    <input type="checkbox" id="enable-live">
+    <label for="enable-live">Enable live sending</label>
+
+    <!-- Send Buttons -->
+    <div class="button-row">
+        <button class="send-live" style="display: none;">Send Live</button>
+        <button class="send-test">Send Test</button>
+    </div>
+
+<script>
+    $(document).ready(function() {
+
+        const domainPicker = $('#domain-picker');
+
+        // Show Add Domain form
+        $('#add-domain').click(function() {
+            $('#domain-form').show();
+            $('#new-domain').val('');
+            $('#new-api-key').val('');
+        });
+
+        // Hide Add Domain form
+        $('#cancel-edit').click(function() {
+            $('#domain-form').hide();
+            domainPicker.show();
+        });
+
+        // Add a domain
+        $('#save-domain').click(function() {
+            const domain = $('#new-domain').val();
+            const apiKey = $('#new-api-key').val();
+
+            $.post('/add-domain', { domain, api_key: apiKey }, function(response) {
+                if (response.success) {
+                    alert('Domain added!');
+                    location.reload(); // Reload to show updated domain list
+                    domainPicker.show();  // Show domain picker
+                }
+            });
+        });
+
+        $('#enable-live').change(function() {
+            const enableLive = $(this).is(':checked');
+            $('.send-live').toggle(enableLive);
+        });
+
+        // Handle domain selection (get the API key, templates, and mail lists)
+        $('#domain-select').change(function() {
+            const domain = $(this).val();
+
+            if (domain) {
+                $.get('/get-api-key', { domain }, function(response) {
+                    if (response.api_key) {
+                        $('#test-emails').attr('disabled', false); // Enable the test emails input
+                    } else {
+                        $('#test-emails').attr('disabled', true); // Disable the test emails input
+                    }
+                });
+
+                // Fetch templates for the selected domain
+                $.get('/get-templates', { domain }, function(templates) {
+                    $('#template-select').empty();
+                    $('#template-error').remove(); // Remove any previous error message
+
+                    if (templates.length > 0) {
+                        templates.forEach(template => {
+                            $('#template-select').append(
+                                `<option value="${template.name}">${template.name}</option>`
+                            );
+                        });
+                        $('#template-select').prop('disabled', false); // Enable the template select
+                    } else {
+                        $('#template-select').append('<option value="">No templates available</option>');
+                        $('#template-select').prop('disabled', true); // Disable the template select
+                        $('#template-select').after('<p id="template-error" style="color: red;">No templates were found for the selected domain.</p>');
+                    }
+                });
+
+                // Fetch mail lists for the selected domain
+                $.get('/get-mail-lists', { domain }, function(mailLists) {
+                    $('#mail-list-select').empty();
+                    $('#mail-list-error').remove(); // Remove any previous error message
+
+                    if (mailLists.length > 0) {
+                        mailLists.forEach(list => {
+                            $('#mail-list-select').append(
+                                `<option value="${list.address}">${list.name}</option>`
+                            );
+                        });
+                        $('#mail-list-select').prop('disabled', false); // Enable the mail list select
+                    } else {
+                        $('#mail-list-select').append('<option value="">No mail lists available</option>');
+                        $('#mail-list-select').prop('disabled', true); // Disable the mail list select
+                        $('#mail-list-select').after('<p id="mail-list-error" style="color: red;">No mail lists were found for the selected domain.</p>');
+                    }
+                });
+            }
+        });
+
+        // Show Edit form with populated domain and API key
+        $('#edit-domain').click(function() {
+            domainPicker.hide();  // Hide domain picker
+            const selectedDomain = $('#domain-select').val();
+            if (!selectedDomain) {
+                alert('Please select a domain first.');
+                return;
+            }
+
+            // Fetch API key for the selected domain and populate the form
+            $.get('/get-api-key', { domain: selectedDomain }, function(response) {
+                if (response.api_key) {
+                    $('#new-domain').val(selectedDomain);  // Populate domain (disabled)
+                    $('#new-api-key').val(response.api_key); // Populate API key
+                    $('#domain-form').show();  // Show the form
+                }
+            });
+        });
+
+        // Confirmation dialog when sending Live email
+        $('.send-live').click(function() {
+            const domain = $('#domain-select').val();
+            const template = $('#template-select').val();
+            const mailList = $('#mail-list-select').val();
+            const mailListName = $('#mail-list-select option:selected').text();
+
+            if (!domain || !template || !mailList) {
+                alert('Please select a domain, template, and mail list.');
+                return;
+            }
+
+            // Fetch mail list details to get recipient count
+            $.get('/get-mail-list-details', { domain: domain, mail_list: mailList }, function(response) {
+                if (response.recipients) {
+                    const confirmSend = confirm(`You are about to send a live email to the list "${mailListName}" with ${response.recipients} recipients. Do you want to proceed?`);
+                    
+                    if (confirmSend) {
+                        // Proceed with sending the live email
+                        $.post('/send-live-email', {
+                            domain: domain,
+                            template: template,
+                            mail_list: mailList
+                        }, function(sendResponse) {
+                            if (sendResponse.status === 'success') {
+                                alert('Live email sent successfully!');
+                            } else {
+                                alert('Error sending live email: ' + sendResponse.error);
+                            }
+                        });
+                    }
+                } else {
+                    alert('Unable to fetch recipient count for the mail list.');
+                }
+            });
+        });
+
+        $('.send-test').click(function() {
+            const domain = $('#domain-select').val();
+            const template = $('#template-select').val();
+            const testEmails = $('#test-emails').val();
+            const emailSubject = $('#email-subject').val();
+            const fromAddress = $('#from-address').val();
+
+            if (!domain || !template || !testEmails || !emailSubject || !fromAddress) {
+                alert('Please complete all fields: domain, template, subject, from address, and test emails.');
+                return;
+            }
+
+            // Send POST request to send test email
+            $.post('/send-test-email', {
+                domain: domain,
+                template: template,
+                test_emails: testEmails,
+                subject: emailSubject,
+                from_address: fromAddress
+            }, function(response) {
+                if (response.status === 'success') {
+                    alert('Test email sent successfully!');
+                } else {
+                    alert('Error sending test email: ' + response.error);
+                }
+            });
+        });
+        
+    });
+</script>
+
+
+</body>
+</html>

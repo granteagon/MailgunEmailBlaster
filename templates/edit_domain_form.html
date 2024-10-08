@@ -1,0 +1,6 @@
+<form hx-post="/update-domain/{{ domain }}" hx-swap="outerHTML" hx-on="htmx:afterRequest: hx-get='/refresh-domains' hx-target='#domain-select'">
+  <label for="api_key">Update API Key for {{ domain }}:</label>
+  <input type="text" name="api_key" value="{{ api_key }}" required>
+  <button type="submit">Update</button>
+  <button type="button" hx-get="/cancel-edit" hx-swap="outerHTML">Cancel</button>
+</form>
