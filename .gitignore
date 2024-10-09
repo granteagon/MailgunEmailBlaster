@@ -162,7 +162,7 @@ cython_debug/
 .idea/
 
 # Virtual environment dir.  I prefer to just keep my venv dir inside my repos.
-venv
+venv/
 
 # Domains database for this project.
 domains.db
