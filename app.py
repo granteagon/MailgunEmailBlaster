@@ -6,19 +6,35 @@ app = Flask(__name__)
 
 MAILGUN_API_BASE_URL = "https://api.mailgun.net/v3"
 
-# Initialize SQLite database
+# Initialize SQLite database and handle schema changes
 def init_db():
     conn = sqlite3.connect('domains.db')
     c = conn.cursor()
+
+    # Check if the 'domains' table exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS domains (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             domain TEXT UNIQUE,
-            api_key TEXT
-        )
+            api_key TEXT,
+            is_primary BOOLEAN DEFAULT TRUE,
+            primary_domain_id INTEGER
+        );
     ''')
+    
+    # Check if 'is_primary' column exists, if not, add it
+    c.execute("PRAGMA table_info(domains)")
+    columns = [col[1] for col in c.fetchall()]
+    
+    if 'is_primary' not in columns:
+        c.execute("ALTER TABLE domains ADD COLUMN is_primary BOOLEAN DEFAULT TRUE")
+
+    if 'primary_domain_id' not in columns:
+        c.execute("ALTER TABLE domains ADD COLUMN primary_domain_id INTEGER")
+
     conn.commit()
     conn.close()
+
 
 # Home route
 @app.route('/')
@@ -30,19 +46,46 @@ def home():
     conn.close()
     return render_template('index.html', domains=domains)
 
-# Add domain and API key
+
 @app.route('/add-domain', methods=['POST'])
 def add_domain():
     domain = request.form['domain']
     api_key = request.form['api_key']
+    is_primary = request.form.get('is_primary', 'false') == 'true'
+    primary_domain_id = request.form.get('primary_domain_id') if not is_primary else None
 
     conn = sqlite3.connect('domains.db')
     c = conn.cursor()
-    c.execute('INSERT OR REPLACE INTO domains (domain, api_key) VALUES (?, ?)', (domain, api_key))
+    c.execute('INSERT OR REPLACE INTO domains (domain, api_key, is_primary, primary_domain_id) VALUES (?, ?, ?, ?)', 
+              (domain, api_key, is_primary, primary_domain_id))
     conn.commit()
     conn.close()
 
     return jsonify({"success": True})
+
+
+@app.route('/get-domain-details', methods=['GET'])
+def get_domain_details():
+    domain = request.args.get('domain')
+    
+    conn = sqlite3.connect('domains.db')
+    c = conn.cursor()
+    c.execute('SELECT id, domain, api_key, is_primary, primary_domain_id FROM domains WHERE domain = ?', (domain,))
+    result = c.fetchone()
+    conn.close()
+
+    if result:
+        id, domain, api_key, is_primary, primary_domain_id = result
+        return jsonify({
+            "id": id,
+            "domain": domain,
+            "api_key": api_key,
+            "is_primary": is_primary,
+            "primary_domain_id": primary_domain_id
+        })
+    else:
+        return jsonify({"error": "Domain not found"}), 404
+
 
 # Fetch API key for a domain
 @app.route('/get-api-key', methods=['GET'])
@@ -112,10 +155,10 @@ def get_templates():
 
 @app.route('/get-mail-lists', methods=['GET'])
 def get_mail_lists():
-    domain = request.args.get('domain')
+    domain_id = request.args.get('domain_id')
     conn = sqlite3.connect('domains.db')
     c = conn.cursor()
-    c.execute('SELECT api_key FROM domains WHERE domain = ?', (domain,))
+    c.execute('SELECT api_key FROM domains WHERE id = ?', (domain_id,))
     api_key = c.fetchone()
     conn.close()
 
@@ -136,47 +179,6 @@ def get_mail_lists():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/send-test-email', methods=['POST'])
-def send_test_email():
-    domain = request.form.get('domain')
-    template = request.form.get('template')
-    test_emails = request.form.get('test_emails').split(',')
-    email_subject = request.form.get('subject')
-    from_address = request.form.get('from_address')
-    
-    if not domain or not template or not test_emails or not email_subject or not from_address:
-        return jsonify({'error': 'Missing required fields'}), 400
-
-    conn = sqlite3.connect('domains.db')
-    c = conn.cursor()
-    c.execute('SELECT api_key FROM domains WHERE domain = ?', (domain,))
-    api_key = c.fetchone()
-    conn.close()
-
-    if not api_key:
-        return jsonify({"error": "No API key found for the domain"}), 404
-
-    # Prepare the data for sending email via Mailgun API
-    data = {
-        "from": from_address,
-        "to": test_emails,
-        "subject": email_subject,
-        "template": template
-    }
-
-    # Send the email via Mailgun API
-    try:
-        response = requests.post(
-            f"{MAILGUN_API_BASE_URL}/{domain}/messages",
-            auth=("api", api_key[0]),
-            data=data
-        )
-        if response.status_code == 200:
-            return jsonify({'status': 'success', 'message': 'Test email sent successfully!'})
-        else:
-            return jsonify({'error': 'Failed to send email', 'details': response.text}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/get-mail-list-details', methods=['GET'])
 def get_mail_list_details():
@@ -206,14 +208,65 @@ def get_mail_list_details():
             return jsonify({'error': 'Failed to fetch mail list details', 'details': response.text}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/send-test-email', methods=['POST'])
+def send_test_email():
+    domain = request.form.get('domain')
+    template = request.form.get('template')
+    from_address = request.form.get('from_address')
+    reply_to = request.form.get('reply_to', None)  # Optional reply-to address
+    test_emails = [email.strip() for email in request.form.get('test_emails', '').split(',')] 
+    
+    if not domain or not template or not test_emails or not from_address:
+        return jsonify({'error': 'Missing required fields'}), 400
+
+    conn = sqlite3.connect('domains.db')
+    c = conn.cursor()
+    c.execute('SELECT api_key FROM domains WHERE domain = ?', (domain,))
+    api_key = c.fetchone()
+    conn.close()
+
+    if not api_key:
+        return jsonify({"error": "No API key found for the domain"}), 404
+
+    # Prepare the data for sending email via Mailgun API
+    data = {
+        "from": from_address,
+        "to": test_emails,
+        "subject": "Test Email",
+        "template": template
+    }
+
+    if reply_to:
+        data["h:Reply-To"] = reply_to  # Include Reply-To header if provided
+
+    # Send the email via Mailgun API
+    try:
+        response = requests.post(
+            f"{MAILGUN_API_BASE_URL}/{domain}/messages",
+            auth=("api", api_key[0]),
+            data=data
+        )
+        if response.status_code == 200:
+            return jsonify({'status': 'success', 'message': 'Test email sent successfully!'})
+        else:
+            return jsonify({'error': 'Failed to send email', 'details': response.text}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 
 @app.route('/send-live-email', methods=['POST'])
 def send_live_email():
     domain = request.form.get('domain')
     template = request.form.get('template')
     mail_list = request.form.get('mail_list')
+    from_address = request.form.get('from_address')
+    reply_to = request.form.get('reply_to', None)  # Optional reply-to address
+    include_test_list = request.form.get('include_test_list') == 'true'
+    test_emails = [email.strip() for email in request.form.get('test_emails', '').split(',')] if include_test_list else []  # Trim whitespace
 
-    if not domain or not template or not mail_list:
+    if not domain or not template or not mail_list or not from_address:
         return jsonify({'error': 'Missing required fields'}), 400
 
     # Fetch the API key for the domain
@@ -226,13 +279,21 @@ def send_live_email():
     if not api_key:
         return jsonify({"error": "No API key found for the domain"}), 404
 
+    # Prepare the recipient list
+    recipient_list = [mail_list]
+    if include_test_list and test_emails:
+        recipient_list.extend(test_emails)
+
     # Prepare the data for sending the live email via Mailgun API
     data = {
-        "from": f"Live Sender <mailgun@{domain}>",  # Customize the "from" email address if needed
-        "to": mail_list,  # This will send the email to the entire mailing list
+        "from": from_address,
+        "to": recipient_list,  # This will send the email to the mailing list and test emails
         "subject": "Live Email Notification",
         "template": template
     }
+
+    if reply_to:
+        data["h:Reply-To"] = reply_to  # Include Reply-To header if provided
 
     # Send the email via Mailgun API
     try:
@@ -248,8 +309,16 @@ def send_live_email():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/get-domains', methods=['GET'])
+def get_domains():
+    conn = sqlite3.connect('domains.db')
+    c = conn.cursor()
+    c.execute('SELECT id, domain AS name, api_key, is_primary FROM domains')
+    domains = [{'id': row[0], 'name': row[1], 'api_key': row[2], 'is_primary': row[3]} for row in c.fetchall()]
+    conn.close()
+    return jsonify({'domains': domains})
 
+init_db()
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)

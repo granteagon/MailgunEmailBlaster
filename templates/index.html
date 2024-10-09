@@ -10,6 +10,7 @@
         button { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; }
         .edit-button, .add-button { margin-left: 5px; }
         button.add-button { background-color: #333; color: #fff; }
+        button.new-button { background-color: #FFBF00; color: #333; }
         button.edit-button { background-color: #5bc0de; color: white; }
         button.delete-button { background-color: #d9534f; color: white; margin-left: 10px; }
         button.send-live { background-color: #d9534f; color: white; }
@@ -17,6 +18,10 @@
         select, input[type="text"] { width: 100%; padding: 8px; margin-top: 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }
         .button-row { display: flex; justify-content: space-between; margin-top: 20px; }
         .helper-text { font-size: 12px; color: #888; }
+        #domain-manager { margin-bottom: 20px; }
+        .flex-row { display: flex; justify-content: space-between; align-items: center; }
+        #current-domain { background-color: #f0f0f0; padding: 5px 10px; border-radius: 5px; color: #333; }
+        
     </style>
 </head>
 <body>
@@ -24,67 +29,270 @@
 
     <!-- Domain Selection -->
     <div id="domain-picker">
-        <label for="domain">Domain</label>
+        <div class="flex-row">
+            <label for="domain">Domain</label>
+            <button class="add-button" id="add-domain">Add Domain</button>
+        </div>
         <div class="domain-controls">
             <select id="domain-select">
                 <option value="">Select a domain</option>
-                {% for domain in domains %}
-                <option value="{{ domain }}">{{ domain }}</option>
-                {% endfor %}
             </select>
+        </div>
+        <div class="flex-row">
             <button class="edit-button" id="edit-domain">Edit</button>
-            <button class="add-button" id="add-domain">Add Domain</button>
+            <button class="new-button" id="new-blast">New Blast</button>
         </div>
     </div>
+
 
     <!-- Add/Edit Domain Form -->
     <div id="domain-form" style="display: none;">
         <label for="domain">Domain</label>
         <input type="text" id="new-domain">
+        
         <label for="api_key">API Key</label>
         <input type="text" id="new-api-key">
+        
+        <!-- Checkbox to mark as primary or child domain -->
+        <label for="primary-domain">Is this a primary domain?</label>
+        <input type="checkbox" id="primary-domain-checkbox">
+
+        <!-- Select dropdown to choose the primary domain if it's a child domain -->
+        <div id="primary-domain-select">
+            <label for="associated-primary-domain">Select the associated primary domain:</label>
+            <select id="associated-primary-domain">
+                <option value="">Select a primary domain</option>
+            </select>
+        </div>
+
         <button class="edit-button" id="save-domain">Save</button>
         <button class="delete-button" id="cancel-edit">Cancel</button>
     </div>
 
-    <!-- Template -->
-    <label for="template">Template</label>
-    <select id="template-select" disabled>
-        <option value="">Select a template</option>
-    </select>
+    <div id="blast-form" style="display: none;">
+        <!-- Current domain breadcrumb -->
+        <div style="margin-bottom: 20px;">
+            <label><strong>Domain:</strong> <span id="current-domain"></span></label>
+        </div>
 
-    <!-- Subject Input -->
-    <label for="email-subject">Email Subject</label>
-    <input type="text" id="email-subject" placeholder="Enter the email subject">
+        <div>
+            <!-- Template -->
+            <label for="template">Template</label>
+            <select id="template-select" disabled>
+                <option value="">Select a template</option>
+            </select>
+        </div>
 
-    <!-- From Address Input -->
-    <label for="from-address">From Address</label>
-    <input type="text" id="from-address" placeholder="Enter the from address">
+        <!-- Subject Input -->
+        <label for="email-subject">Email Subject</label>
+        <input type="text" id="email-subject" placeholder="Enter the email subject">
 
-    <!-- Mail List and Test Emails -->
-    <label for="mail-list">Mail List</label>
-    <select id="mail-list-select" disabled>
-        <option value="">Select a mail list</option>
-    </select>
+        <!-- From Address Input (local part only, no domain) -->
+        <label for="from-address">From Address (local part, without @domain)</label>
+        <input type="text" id="from-address" placeholder="Enter the local part of the email (e.g., 'info')">
 
-    <!-- Test Emails Input -->
-    <label for="test-emails">Test Emails (comma separated)</label>
-    <input type="text" id="test-emails" placeholder="Enter test emails">
+        <!-- Reply-To Address Input -->
+        <label for="reply-to-address">Reply-To Address (optional)</label>
+        <input type="text" id="reply-to-address" placeholder="Enter a reply-to email address (optional)">
 
-    <!-- Deliverable Only Checkbox -->
-    <input type="checkbox" id="enable-live">
-    <label for="enable-live">Enable live sending</label>
+        <!-- Mail List and Test Emails -->
+        <label for="mail-list">Mail List</label>
+        <select id="mail-list-select" disabled>
+            <option value="">Select a mail list</option>
+        </select>
 
-    <!-- Send Buttons -->
-    <div class="button-row">
-        <button class="send-live" style="display: none;">Send Live</button>
-        <button class="send-test">Send Test</button>
+        <!-- Test Emails Input -->
+        <label for="test-emails">Test Emails (comma separated)</label>
+        <input type="text" id="test-emails" placeholder="Enter test emails">
+
+        <!-- Include Test List Checkbox -->
+        <div>
+            <input type="checkbox" id="include-test-list" name="include-test-list">
+            <label for="include-test-list">Include Test List in Live Email</label>
+        </div>
+
+        <!-- Deliverable Only Checkbox -->
+        <div>
+            <input type="checkbox" id="enable-live">
+            <label for="enable-live">Enable live sending</label>
+        </div>
+
+        <!-- Send Buttons -->
+        <div class="flex-row" style="margin-top: 20px;">
+            <button class="cancel-blast">Cancel Blast</button>
+            <button class="send-live" style="display: none;">Send Live</button>
+            <button class="send-test">Send Test</button>
+        </div>
+    
     </div>
 
 <script>
     $(document).ready(function() {
+        
 
         const domainPicker = $('#domain-picker');
+
+        $('.cancel-blast').click(function() {
+            showBlastForm(false);
+        });
+
+        // showDomainForm(visible)
+        function showDomainForm(visible) {
+            if (visible) {
+                $('#domain-form').show();
+                domainPicker.hide();
+            } else {
+                resetDomainForm()
+                $('#domain-form').hide();
+                domainPicker.show();
+            }
+        }
+
+        function resetDomainForm() {
+            $('#new-domain').val('');
+            $('#new-api-key').val('');
+            $('#primary-domain-checkbox').prop('checked', false);
+            $('#associated-primary-domain').val('');
+        }
+
+        // showBlastForm(visible)
+        function showBlastForm(visible) {
+            if (visible) {
+                $('#blast-form').show();
+                showDomainForm(false);
+                $('#domain-select').change();
+                domainPicker.hide();
+                $('#current-domain').text($('#domain-select').val());
+            } else {
+                $('#blast-form').hide();
+                domainPicker.show();
+                $('#current-domain').text('');
+            }
+        }
+
+        $('#new-blast').click(function() {
+            showBlastForm(true);
+        });
+
+        // Function to fetch and display domains
+        function fetchDomains() {
+            $.get('/get-domains', function (response) {
+                const domainList = $('#domain-list');
+                domainList.empty(); // Clear the existing list
+                // clear the domain selects
+                $('#domain-select').empty();
+                $('#associated-primary-domain').empty();
+                
+                // Loop through the domains and add them to the list and the selects
+                response.domains.forEach(function (domain) {
+                    domainList.append(`
+                        <li>
+                            ${domain.name}
+                            <button class="edit-button" onclick="editDomain(${domain.id})">Edit</button>
+                            <button class="delete-button" onclick="deleteDomain(${domain.id})">Delete</button>
+                        </li>
+                    `);
+                    $('#domain-select').append(`<option>${domain.name}</option>`);
+                    if (domain.is_primary) {
+                        $('#associated-primary-domain').append(`<option value="${domain.id}">${domain.name}</option>`);
+                    }
+                });
+            });
+        }
+
+        // Fetch the domains when the page loads
+        fetchDomains();
+
+        // Add domain functionality (on button click)
+        $('#add-domain').click(function () {
+            // You can add your domain adding logic here
+            // After adding, fetch and refresh the domain list again
+            fetchDomains();
+            showDomainForm(true);
+        });
+
+        // Function to edit a domain (this can be defined further based on your form logic)
+        window.editDomain = function (domainId) {
+            // Fetch domain details and display them in a form for editing
+            $.get(`/edit-domain/${domainId}`, function (data) {
+                // Handle the response and show edit form
+                // Refresh domain list after editing
+                fetchDomains();
+                showDomainForm(true);
+            });
+        };
+
+        // Function to delete a domain
+        window.deleteDomain = function (domainId) {
+            $.get(`/delete-domain/${domainId}`, function (data) {
+                // After deletion, refresh the domain list
+                fetchDomains();
+            });
+        };
+
+        // Handle the form submission to update the domain
+        $('#edit-domain-form').submit(function (e) {
+            e.preventDefault(); // Prevent default form submission
+
+            const domainId = $('#edit-domain-id').val();
+            const domainName = $('#edit-domain-name').val();
+            const apiKey = $('#edit-api-key').val();
+
+            // Submit the updated data
+            $.post(`/update-domain/${domainId}`, {
+                domain: domainName,
+                api_key: apiKey
+            }, function (response) {
+                if (response.status === 'success') {
+                    alert('Domain updated successfully!');
+                    $('#domain-edit-form').hide();
+                    $('#domain-manager').show();
+                    fetchDomains(); // Refresh the domain list after update
+                } else {
+                    alert('Error updating domain: ' + response.message);
+                }
+            });
+        });
+
+        // Cancel the edit action
+        $('#cancel-edit').click(function () {
+            $('#domain-edit-form').hide();
+        });
+
+        // Function to delete a domain
+        window.deleteDomain = function (domainId) {
+            $.get(`/delete-domain/${domainId}`, function (data) {
+                fetchDomains(); // Refresh the domain list after deletion
+            });
+        };
+
+        // Show or hide the primary domain select based on the checkbox state
+        $('#primary-domain-checkbox').change(function() {
+            if ($(this).is(':checked')) {
+                $('#primary-domain-select').hide();  // Hide the primary domain select if it's a primary domain
+                $('#associated-primary-domain').prop('disabled', true);  // Disable primary domain select
+            } else {
+                $('#primary-domain-select').show();  // Show the primary domain select if it's a child domain
+                $('#associated-primary-domain').prop('disabled', false);  // Enable primary domain select
+            }
+        });
+
+        // Add or update a domain
+        $('#save-domain').click(function() {
+            const domain = $('#new-domain').val();
+            const apiKey = $('#new-api-key').val();
+            const isPrimaryDomain = $('#primary-domain-checkbox').is(':checked');
+            const primaryDomainId = isPrimaryDomain ? null : $('#associated-primary-domain').val();  // Use primary domain ID
+
+            $.post('/add-domain', {
+                domain, api_key: apiKey, is_primary: isPrimaryDomain, primary_domain_id: primaryDomainId
+            }, function(response) {
+                if (response.success) {
+                    alert('Domain added or updated successfully!');
+                    location.reload(); // Reload to show updated domain list
+                }
+            });
+        });
 
         // Show Add Domain form
         $('#add-domain').click(function() {
@@ -99,28 +307,16 @@
             domainPicker.show();
         });
 
-        // Add a domain
-        $('#save-domain').click(function() {
-            const domain = $('#new-domain').val();
-            const apiKey = $('#new-api-key').val();
-
-            $.post('/add-domain', { domain, api_key: apiKey }, function(response) {
-                if (response.success) {
-                    alert('Domain added!');
-                    location.reload(); // Reload to show updated domain list
-                    domainPicker.show();  // Show domain picker
-                }
-            });
-        });
-
         $('#enable-live').change(function() {
             const enableLive = $(this).is(':checked');
             $('.send-live').toggle(enableLive);
+            $('.send-test').toggle(!enableLive);
         });
 
         // Handle domain selection (get the API key, templates, and mail lists)
         $('#domain-select').change(function() {
-            const domain = $(this).val();
+            // domain is the selected option text
+            const domain = $(this).children('option:selected').text();
 
             if (domain) {
                 $.get('/get-api-key', { domain }, function(response) {
@@ -150,70 +346,132 @@
                     }
                 });
 
-                // Fetch mail lists for the selected domain
-                $.get('/get-mail-lists', { domain }, function(mailLists) {
-                    $('#mail-list-select').empty();
-                    $('#mail-list-error').remove(); // Remove any previous error message
-
-                    if (mailLists.length > 0) {
-                        mailLists.forEach(list => {
-                            $('#mail-list-select').append(
-                                `<option value="${list.address}">${list.name}</option>`
-                            );
+                // Fetch the domain details (to determine if it's a primary or child domain)
+                const selectedDomain = $('#domain-select').val(); // Get selected domain
+                if (selectedDomain) {
+                    $.get('/get-domain-details', { domain: selectedDomain }, function (response) {
+                        const isPrimaryDomain = response.is_primary;
+                        const primaryDomainId = isPrimaryDomain ? response.id : response.primary_domain_id;
+                        
+                        // Fetch mail lists for the primary domain
+                        $.get('/get-mail-lists', { domain_id: primaryDomainId }, function (mailLists) {
+                            $('#mail-list-select').empty();
+                            if (mailLists.length > 0) {
+                                mailLists.forEach(list => {
+                                    $('#mail-list-select').append(
+                                        `<option value="${list.address}">${list.name}</option>`
+                                    );
+                                });
+                                $('#mail-list-select').prop('disabled', false);
+                            } else {
+                                $('#mail-list-select').append('<option value="">No mail lists available</option>');
+                                $('#mail-list-select').prop('disabled', true);
+                            }
                         });
-                        $('#mail-list-select').prop('disabled', false); // Enable the mail list select
-                    } else {
-                        $('#mail-list-select').append('<option value="">No mail lists available</option>');
-                        $('#mail-list-select').prop('disabled', true); // Disable the mail list select
-                        $('#mail-list-select').after('<p id="mail-list-error" style="color: red;">No mail lists were found for the selected domain.</p>');
-                    }
-                });
+                    });
+                } else {
+                    alert("Please select a domain first.");
+                }
+
             }
         });
 
-        // Show Edit form with populated domain and API key
+        // On edit, prefill the form and handle primary domain selection
         $('#edit-domain').click(function() {
-            domainPicker.hide();  // Hide domain picker
             const selectedDomain = $('#domain-select').val();
             if (!selectedDomain) {
                 alert('Please select a domain first.');
                 return;
             }
 
-            // Fetch API key for the selected domain and populate the form
-            $.get('/get-api-key', { domain: selectedDomain }, function(response) {
-                if (response.api_key) {
-                    $('#new-domain').val(selectedDomain);  // Populate domain (disabled)
-                    $('#new-api-key').val(response.api_key); // Populate API key
-                    $('#domain-form').show();  // Show the form
+            // Fetch domain details
+            $.get('/get-domain-details', { domain: selectedDomain }, function(response) {
+                $('#new-domain').val(response.domain);
+                $('#new-api-key').val(response.api_key);
+                $('#primary-domain-checkbox').prop('checked', response.is_primary);
+
+                // Show or hide the primary domain select based on whether it's a primary domain
+                if (response.is_primary) {
+                    $('#primary-domain-select').hide();  // Hide primary domain select if it's a primary domain
+                } else {
+                    $('#primary-domain-select').show();  // Show primary domain select for child domain
+                    $('#associated-primary-domain').val(response.primary_domain_id);  // Prefill with associated primary domain
                 }
+
+                // hide domain picker
+                domainPicker.hide();
+                showDomainForm(true);  // Show the domain form
+
             });
         });
 
-        // Confirmation dialog when sending Live email
+        // Utility function to validate the local part of the "From" address (basic validation)
+        function validateLocalPart(localPart) {
+            const regex = /^[a-zA-Z0-9._%+-]+$/;
+            return regex.test(localPart);
+        }
+
+        // Utility function to validate email addresses (for Reply-To validation)
+        function validateEmail(email) {
+            const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return regex.test(email);
+        }
+
+        // Send Live email
         $('.send-live').click(function() {
             const domain = $('#domain-select').val();
             const template = $('#template-select').val();
             const mailList = $('#mail-list-select').val();
-            const mailListName = $('#mail-list-select option:selected').text();
+            const fromAddress = $('#from-address').val();
+            const replyToAddress = $('#reply-to-address').val();  // Get Reply-To address
+            const includeTestList = $('#include-test-list').is(':checked');
+            const testEmails = $('#test-emails').val();  // Test emails to be optionally included
 
-            if (!domain || !template || !mailList) {
-                alert('Please select a domain, template, and mail list.');
+            if (!domain || !template || !mailList || !fromAddress) {
+                alert('Please complete all fields: domain, template, from address, and mail list.');
                 return;
             }
+
+            // Validate the local part of the "From" address
+            if (!validateLocalPart(fromAddress)) {
+                alert('Invalid "From" address. Please enter only the local part without "@" or domain.');
+                return;
+            }
+
+            // Validate the Reply-To address (if provided)
+            if (replyToAddress && !validateEmail(replyToAddress)) {
+                alert('Invalid Reply-To address. Please provide a valid email address.');
+                return;
+            }
+
+            // Construct the full "From" address
+            const fullFromAddress = `${fromAddress}@${domain}`;
 
             // Fetch mail list details to get recipient count
             $.get('/get-mail-list-details', { domain: domain, mail_list: mailList }, function(response) {
                 if (response.recipients) {
-                    const confirmSend = confirm(`You are about to send a live email to the list "${mailListName}" with ${response.recipients} recipients. Do you want to proceed?`);
+                    const confirmSend = confirm(`You are about to send a live email to the list "${mailList}" with ${response.recipients} recipients. Do you want to proceed?`);
                     
                     if (confirmSend) {
-                        // Proceed with sending the live email
-                        $.post('/send-live-email', {
+                        // Prepare data for live email
+                        const postData = {
                             domain: domain,
                             template: template,
-                            mail_list: mailList
-                        }, function(sendResponse) {
+                            mail_list: mailList,
+                            from_address: fullFromAddress,
+                            include_test_list: includeTestList
+                        };
+
+                        if (includeTestList && testEmails) {
+                            postData['test_emails'] = testEmails;
+                        }
+
+                        if (replyToAddress) {
+                            postData['reply_to'] = replyToAddress;  // Include Reply-To if provided
+                        }
+
+                        // Proceed with sending the live email
+                        $.post('/send-live-email', postData, function(sendResponse) {
                             if (sendResponse.status === 'success') {
                                 alert('Live email sent successfully!');
                             } else {
@@ -227,26 +485,48 @@
             });
         });
 
+        // Send Test email
         $('.send-test').click(function() {
             const domain = $('#domain-select').val();
             const template = $('#template-select').val();
             const testEmails = $('#test-emails').val();
-            const emailSubject = $('#email-subject').val();
             const fromAddress = $('#from-address').val();
+            const replyToAddress = $('#reply-to-address').val();  // Get Reply-To address
 
-            if (!domain || !template || !testEmails || !emailSubject || !fromAddress) {
-                alert('Please complete all fields: domain, template, subject, from address, and test emails.');
+            if (!domain || !template || !testEmails || !fromAddress) {
+                alert('Please complete all fields: domain, template, from address, and test emails.');
                 return;
             }
 
-            // Send POST request to send test email
-            $.post('/send-test-email', {
+            // Validate the local part of the "From" address
+            if (!validateLocalPart(fromAddress)) {
+                alert('Invalid "From" address. Please enter only the local part without "@" or domain.');
+                return;
+            }
+
+            // Validate the Reply-To address (if provided)
+            if (replyToAddress && !validateEmail(replyToAddress)) {
+                alert('Invalid Reply-To address. Please provide a valid email address.');
+                return;
+            }
+
+            // Construct the full "From" address
+            const fullFromAddress = `${fromAddress}@${domain}`;
+
+            // Prepare data for test email
+            const postData = {
                 domain: domain,
                 template: template,
                 test_emails: testEmails,
-                subject: emailSubject,
-                from_address: fromAddress
-            }, function(response) {
+                from_address: fullFromAddress
+            };
+
+            if (replyToAddress) {
+                postData['reply_to'] = replyToAddress;  // Include Reply-To if provided
+            }
+
+            // Send POST request to send test email
+            $.post('/send-test-email', postData, function(response) {
                 if (response.status === 'success') {
                     alert('Test email sent successfully!');
                 } else {
