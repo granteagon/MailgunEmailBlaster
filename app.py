@@ -187,8 +187,12 @@ def get_mail_list_details():
     
     conn = sqlite3.connect('domains.db')
     c = conn.cursor()
-    c.execute('SELECT api_key FROM domains WHERE domain = ?', (domain,))
-    api_key = c.fetchone()
+    c.execute('SELECT api_key, primary_domain_id, is_primary FROM domains WHERE domain = ?', (domain,))
+    api_key, primary_domain_id, is_primary = c.fetchone()
+    # if the domain is not primary, get the primary domain's API key
+    if not is_primary:
+        c.execute('SELECT api_key FROM domains WHERE id = ?', (primary_domain_id,))
+        api_key = c.fetchone()
     conn.close()
 
     if not api_key:
@@ -215,7 +219,8 @@ def send_test_email():
     template = request.form.get('template')
     from_address = request.form.get('from_address')
     reply_to = request.form.get('reply_to', None)  # Optional reply-to address
-    test_emails = [email.strip() for email in request.form.get('test_emails', '').split(',')] 
+    test_emails = [email.strip() for email in request.form.get('test_emails', '').split(',')]
+    subject = request.form.get('subject', None)
     
     if not domain or not template or not test_emails or not from_address:
         return jsonify({'error': 'Missing required fields'}), 400
@@ -233,8 +238,8 @@ def send_test_email():
     data = {
         "from": from_address,
         "to": test_emails,
-        "subject": "Test Email",
-        "template": template
+        "subject": subject,
+        "template": template,
     }
 
     if reply_to:
@@ -289,7 +294,7 @@ def send_live_email():
         "from": from_address,
         "to": recipient_list,  # This will send the email to the mailing list and test emails
         "subject": "Live Email Notification",
-        "template": template
+        "template": template,
     }
 
     if reply_to:

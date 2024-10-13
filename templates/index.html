@@ -125,6 +125,7 @@
         </div>
     
     </div>
+    <div id="error-message"></div>
 
 <script>
     $(document).ready(function() {
@@ -459,7 +460,8 @@
                             template: template,
                             mail_list: mailList,
                             from_address: fullFromAddress,
-                            include_test_list: includeTestList
+                            include_test_list: includeTestList,
+                            subject: $('#email-subject').val()
                         };
 
                         if (includeTestList && testEmails) {
@@ -518,7 +520,8 @@
                 domain: domain,
                 template: template,
                 test_emails: testEmails,
-                from_address: fullFromAddress
+                from_address: fullFromAddress,
+                subject: $('#email-subject').val()
             };
 
             if (replyToAddress) {
