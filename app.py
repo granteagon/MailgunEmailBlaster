@@ -270,6 +270,7 @@ def send_live_email():
     reply_to = request.form.get('reply_to', None)  # Optional reply-to address
     include_test_list = request.form.get('include_test_list') == 'true'
     test_emails = [email.strip() for email in request.form.get('test_emails', '').split(',')] if include_test_list else []  # Trim whitespace
+    subject = request.form.get('subject', None)
 
     if not domain or not template or not mail_list or not from_address:
         return jsonify({'error': 'Missing required fields'}), 400
@@ -293,7 +294,7 @@ def send_live_email():
     data = {
         "from": from_address,
         "to": recipient_list,  # This will send the email to the mailing list and test emails
-        "subject": "Live Email Notification",
+        "subject": subject,
         "template": template,
     }
 
